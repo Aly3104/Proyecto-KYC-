@@ -1,8 +1,10 @@
 'use client';
 
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { signOut, useSession } from '@/lib/auth-client';
+import { alertsApi } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 const NAV_ITEMS = [
@@ -32,6 +34,36 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { data: session } = useSession();
+  const [pendingAlerts, setPendingAlerts] = useState(0);
+
+  const refreshPendingAlerts = useCallback(async () => {
+    if (!session?.user) return;
+
+    try {
+      const alerts = await alertsApi.list(false);
+      setPendingAlerts(alerts.length);
+    } catch {
+      setPendingAlerts(0);
+    }
+  }, [session?.user]);
+
+  useEffect(() => {
+    refreshPendingAlerts();
+
+    const interval = window.setInterval(refreshPendingAlerts, 10000);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshPendingAlerts();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [refreshPendingAlerts]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -72,7 +104,21 @@ export function Sidebar() {
               )}
             >
               {item.icon}
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              {item.href === '/alerts' && pendingAlerts > 0 && (
+                <span
+                  aria-label={`${pendingAlerts} alertas pendientes`}
+                  title={`${pendingAlerts} alertas pendientes`}
+                  className={cn(
+                    'inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-xs font-semibold leading-none',
+                    active
+                      ? 'bg-red-100 text-red-700'
+                      : 'bg-red-600 text-white',
+                  )}
+                >
+                  {pendingAlerts > 99 ? '99+' : pendingAlerts}
+                </span>
+              )}
             </Link>
           );
         })}
