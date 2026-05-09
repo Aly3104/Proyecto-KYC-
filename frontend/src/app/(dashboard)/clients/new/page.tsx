@@ -5,12 +5,15 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { catalogsApi, clientsApi, ApiError } from '@/lib/api';
 import type {
+  AlertType,
   CreateClientPayload,
   EconomicActivity,
   FundOrigin,
   Nationality,
 } from '@/types';
 import { formatCurrency } from '@/lib/utils';
+import { AlertBadge } from '@/components/alerts/alert-badge';
+import { RiskBadge } from '@/components/clients/risk-badge';
 
 type FormValues = {
   fullName: string;
@@ -20,6 +23,17 @@ type FormValues = {
   fundOriginId: string;
   estimatedMonthlyAmount: string;
 };
+
+const CASH_ALERT_THRESHOLD = 2_000_000;
+const HIGH_AMOUNT_THRESHOLD = 5_000_000;
+const SCORE_ALTO = 8;
+const SCORE_MEDIO = 4;
+
+function toRiskLevel(score: number) {
+  if (score >= SCORE_ALTO) return 'ALTO';
+  if (score >= SCORE_MEDIO) return 'MEDIO';
+  return 'BAJO';
+}
 
 export default function NewClientPage() {
   const router = useRouter();
@@ -51,7 +65,30 @@ export default function NewClientPage() {
   }, []);
 
   const amountValue = watch('estimatedMonthlyAmount');
+  const selectedNationalityId = watch('nationalityId');
+  const selectedActivityId = watch('economicActivityId');
+  const selectedFundOriginId = watch('fundOriginId');
   const parsedAmount = parseFloat(amountValue?.replace(/\./g, '').replace(',', '.') ?? '0');
+
+  const selectedNationality = nationalities.find(
+    (n) => n.id === parseInt(selectedNationalityId, 10),
+  );
+  const selectedActivity = activities.find(
+    (a) => a.id === parseInt(selectedActivityId, 10),
+  );
+  const selectedFundOrigin = fundOrigins.find(
+    (f) => f.id === parseInt(selectedFundOriginId, 10),
+  );
+
+  const preview =
+    selectedNationality && selectedActivity && selectedFundOrigin && !isNaN(parsedAmount)
+      ? getRiskPreview(
+        selectedNationality,
+        selectedActivity,
+        selectedFundOrigin,
+        parsedAmount,
+      )
+      : null;
 
   const onSubmit = async (values: FormValues) => {
     setServerError('');
@@ -192,9 +229,9 @@ export default function NewClientPage() {
             })}
             type="number"
             min="0"
-            step="1000"
+            step="1"
             className="form-input"
-            placeholder="Ej. 3500000"
+            placeholder="Ej. 2500000"
           />
           {amountValue && !isNaN(parsedAmount) && parsedAmount > 0 && (
             <p className="mt-1 text-xs text-gray-400">
@@ -205,6 +242,37 @@ export default function NewClientPage() {
             <p className="form-error">{errors.estimatedMonthlyAmount.message}</p>
           )}
         </div>
+
+        {preview && (
+          <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+                  Previsualización automática
+                </p>
+                <p className="mt-1 text-sm text-gray-600">
+                  Puntaje estimado: {preview.score}
+                </p>
+              </div>
+              <RiskBadge level={preview.riskLevel} size="sm" />
+            </div>
+
+            <div className="mt-3">
+              <p className="mb-2 text-xs font-medium text-gray-500">
+                Alertas esperadas
+              </p>
+              {preview.alerts.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {preview.alerts.map((type) => (
+                    <AlertBadge key={type} type={type} />
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-400">Sin alertas para esta combinación</p>
+              )}
+            </div>
+          </div>
+        )}
 
         {serverError && (
           <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
@@ -227,4 +295,49 @@ export default function NewClientPage() {
       </form>
     </div>
   );
+}
+
+function getRiskPreview(
+  nationality: Nationality,
+  activity: EconomicActivity,
+  fundOrigin: FundOrigin,
+  amount: number,
+): { score: number; riskLevel: 'BAJO' | 'MEDIO' | 'ALTO'; alerts: AlertType[] } {
+  let score = 0;
+  const alerts: AlertType[] = [];
+  const activityName = activity.name.toLowerCase();
+  const fundOriginName = fundOrigin.name.toLowerCase();
+
+  if (nationality.is_foreign) score += 3;
+  score += activity.risk_weight;
+  score += fundOrigin.risk_weight;
+  if (amount > HIGH_AMOUNT_THRESHOLD) score += 3;
+
+  const isCashHigh = fundOrigin.is_cash && amount > CASH_ALERT_THRESHOLD;
+
+  if (isCashHigh) {
+    score += 4;
+    alerts.push('EFECTIVO_ALTO');
+  }
+
+  if (nationality.is_foreign && isCashHigh) {
+    alerts.push('EXTRANJERO_EFECTIVO_ALTO');
+  }
+
+  if (fundOriginName.includes('terceros')) {
+    alerts.push('USO_TERCEROS');
+  }
+
+  if (activityName.includes('no declarada') || fundOriginName.includes('no declarado')) {
+    alerts.push('DATOS_INCOMPLETOS');
+    score = Math.max(score, SCORE_ALTO);
+  }
+
+  const riskLevel = toRiskLevel(score);
+
+  if (riskLevel === 'ALTO') {
+    alerts.push('RIESGO_ALTO');
+  }
+
+  return { score, riskLevel, alerts };
 }

@@ -142,16 +142,16 @@ La API queda disponible en: `http://localhost:3001`
 
 ### 3.4 Endpoints principales
 
-| Método | Ruta              | Descripción                     | Rol requerido      |
-|--------|-------------------|---------------------------------|--------------------|
-| POST   | `/auth/sign-up`   | Registro de usuario             | —                  |
-| POST   | `/auth/sign-in`   | Login                           | —                  |
-| POST   | `/auth/sign-out`  | Cerrar sesión                   | Autenticado        |
-| POST   | `/clients`        | Crear cliente KYC               | admin / analista   |
-| GET    | `/clients`        | Listar todos los clientes       | admin / analista   |
-| GET    | `/clients/:id`    | Obtener un cliente por ID       | admin / analista   |
-| GET    | `/alerts`         | Listar alertas activas          | admin / analista   |
-| PATCH  | `/alerts/:id/resolve` | Marcar alerta como resuelta | admin              |
+| Método | Ruta                  | Descripción                               | Rol requerido      |
+|--------|-----------------------|-------------------------------------------|--------------------|
+| ALL    | `/auth/*`             | Endpoints gestionados por Better Auth     | —                  |
+| POST   | `/clients`            | Crear cliente KYC                         | admin / analista   |
+| GET    | `/clients`            | Listar todos los clientes                 | admin / analista   |
+| GET    | `/clients/:id`        | Obtener un cliente por ID                 | admin / analista   |
+| GET    | `/alerts`             | Listar alertas del sistema                | admin / analista   |
+| PATCH  | `/alerts/:id/resolve` | Marcar alerta como resuelta               | admin              |
+
+> Better Auth expone sus endpoints bajo `/auth/*` (por ejemplo, registro, login, sesión y logout).
 
 ---
 
@@ -241,13 +241,23 @@ risk_level = score >= 8 ? 'ALTO'
 
 **Alertas generadas automáticamente:**
 
-| Condición                                      | Tipo de alerta              |
-|------------------------------------------------|-----------------------------|
-| `fund_origin.is_cash` y monto > 2,000,000      | `EFECTIVO_ALTO`             |
-| `nationality.is_foreign` y `is_cash` alto      | `EXTRANJERO_EFECTIVO_ALTO`  |
-| `risk_level === 'ALTO'`                        | `RIESGO_ALTO`               |
-| Campos opcionales vacíos o sospechosos         | `DATOS_INCOMPLETOS`         |
-| `fund_origin.name` contiene "terceros"         | `USO_TERCEROS`              |
+| Condición                                              | Tipo de alerta              |
+|--------------------------------------------------------|-----------------------------|
+| `fund_origin.is_cash` y monto > 2,000,000              | `EFECTIVO_ALTO`             |
+| `nationality.is_foreign` y `is_cash` alto              | `EXTRANJERO_EFECTIVO_ALTO`  |
+| `risk_level === 'ALTO'`                                | `RIESGO_ALTO`               |
+| Actividad u origen contienen `"no declarad"`           | `DATOS_INCOMPLETOS`         |
+| `fund_origin.name` contiene `"terceros"`               | `USO_TERCEROS`              |
+
+**Escenarios rápidos para demostrar alertas específicas en la UI:**
+
+| Alerta esperada | Datos de ejemplo |
+|-----------------|------------------|
+| `EFECTIVO_ALTO` | Nacionalidad: Colombia · Actividad: Empleado / Asalariado · Origen: Efectivo (cash) · Monto: 2,500,000 |
+| `USO_TERCEROS` | Nacionalidad: Colombia · Actividad: Empleado / Asalariado · Origen: Fondos de terceros · Monto: 1,000,000 |
+| `DATOS_INCOMPLETOS` | Nacionalidad: Colombia · Actividad: Actividad no declarada · Origen: Salario / Nómina · Monto: 500,000 |
+
+El formulario de registro muestra una previsualización automática con el nivel de riesgo y los badges de alertas esperadas antes de guardar el cliente. Después del registro, el listado de clientes, el detalle del cliente y la pantalla de alertas muestran los tipos de alertas activas de forma visible.
 
 ---
 

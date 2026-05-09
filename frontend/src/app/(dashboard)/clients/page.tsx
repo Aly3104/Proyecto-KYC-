@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { clientsApi } from '@/lib/api';
 import type { Client } from '@/types';
 import { RiskBadge } from '@/components/clients/risk-badge';
+import { AlertBadge } from '@/components/alerts/alert-badge';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
 export default function ClientsPage() {
@@ -128,9 +129,16 @@ export default function ClientsPage() {
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-500">
                       {client.alerts && client.alerts.length > 0 ? (
-                        <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
-                          {client.alerts.length} activa{client.alerts.length !== 1 ? 's' : ''}
-                        </span>
+                        <div className="inline-flex flex-wrap gap-1">
+                          {client.alerts.slice(0, 3).map((alert) => (
+                            <AlertBadge key={alert.id} type={alert.type} />
+                          ))}
+                          {client.alerts.length > 3 && (
+                            <span className="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 ring-1 ring-inset ring-gray-500/20">
+                              +{client.alerts.length - 3}
+                            </span>
+                          )}
+                        </div>
                       ) : (
                         <span className="text-gray-400">—</span>
                       )}

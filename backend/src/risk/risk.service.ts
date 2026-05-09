@@ -87,9 +87,9 @@ export class RiskService {
       });
     }
 
-    const hasIncompleteData =
-      economicName.includes('no declarada') ||
-      fundOriginName.includes('no declarado');
+   const hasIncompleteData =
+  economicName.includes('no declarad') ||
+  fundOriginName.includes('no declarad');
 
     if (hasIncompleteData) {
       alerts.push({
