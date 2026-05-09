@@ -28,7 +28,6 @@ export interface RiskInput {
   estimatedMonthlyAmount: number;
 }
 
-// Thresholds (could also be loaded from a config table in the DB)
 const CASH_ALERT_THRESHOLD = 2_000_000;
 const HIGH_AMOUNT_THRESHOLD = 5_000_000;
 const SCORE_ALTO = 8;
@@ -38,19 +37,6 @@ const SCORE_MEDIO = 4;
 export class RiskService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /**
-   * Evaluates the risk level for a client registration and determines which
-   * alerts must be generated.
-   *
-   * Score composition:
-   *   +3  foreign nationality
-   *   +W  economic activity risk_weight  (0–10)
-   *   +W  fund origin risk_weight        (0–10)
-   *   +3  estimated_monthly_amount > 5 M
-   *   +4  cash payment AND amount > 2 M
-   *
-   * Thresholds:  score ≥ 8 → ALTO | score ≥ 4 → MEDIO | else → BAJO
-   */
   async evaluate(input: RiskInput): Promise<RiskEvaluationResult> {
     const [nationality, economicActivity, fundOrigin] = await Promise.all([
       this.prisma.nationality.findUniqueOrThrow({
@@ -68,17 +54,16 @@ export class RiskService {
     const alerts: AlertSeed[] = [];
     const amount = Number(input.estimatedMonthlyAmount);
 
-    // Nationality contribution
+    const economicName = economicActivity.name.toLowerCase();
+    const fundOriginName = fundOrigin.name.toLowerCase();
+
     if (nationality.is_foreign) score += 3;
 
-    // Catalog weights
     score += economicActivity.risk_weight;
     score += fundOrigin.risk_weight;
 
-    // High amount
     if (amount > HIGH_AMOUNT_THRESHOLD) score += 3;
 
-    // Cash payment above threshold
     const isCashHigh = fundOrigin.is_cash && amount > CASH_ALERT_THRESHOLD;
     if (isCashHigh) {
       score += 4;
@@ -88,7 +73,6 @@ export class RiskService {
       });
     }
 
-    // Foreign + high cash → highest risk signal
     if (nationality.is_foreign && isCashHigh) {
       alerts.push({
         type: 'EXTRANJERO_EFECTIVO_ALTO',
@@ -96,12 +80,27 @@ export class RiskService {
       });
     }
 
-    // Third-party funds
-    if (fundOrigin.name.toLowerCase().includes('terceros')) {
+    if (fundOriginName.includes('terceros')) {
       alerts.push({
         type: 'USO_TERCEROS',
         description: `Origen de fondos declarado sugiere uso de terceros: "${fundOrigin.name}".`,
       });
+    }
+
+    const hasIncompleteData =
+      economicName.includes('no declarada') ||
+      fundOriginName.includes('no declarado');
+
+    if (hasIncompleteData) {
+      alerts.push({
+        type: 'DATOS_INCOMPLETOS',
+        description:
+          'El cliente presenta información incompleta o no declarada en los datos KYC.',
+      });
+
+      if (score < SCORE_ALTO) {
+        score = SCORE_ALTO;
+      }
     }
 
     const riskLevel = this.toRiskLevel(score);

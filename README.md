@@ -104,13 +104,8 @@ Contenido de `backend/.env`:
 PORT=3001
 NODE_ENV=development
 
-# Base de datos (MSSQL)
-DB_HOST=localhost
-DB_PORT=1433
-DB_USER=sa
-DB_PASSWORD=YourStrong!Passw0rd
-DB_NAME=kyc_db
-DB_ENCRYPT=false
+# Base de datos (MSSQL / Prisma)
+DATABASE_URL="sqlserver://localhost:1433;database=kyc_db;user=sa;password=YourStrong%21Passw0rd;encrypt=false;trustServerCertificate=true"
 
 # Better Auth
 BETTER_AUTH_SECRET=cambia_este_secreto_por_uno_seguro_min_32_chars
@@ -133,7 +128,6 @@ Dependencias principales que se instalarán:
 @nestjs/common @nestjs/core @nestjs/platform-express
 @nestjs/config
 class-validator class-transformer
-mssql
 better-auth
 uuid
 ```
@@ -173,6 +167,7 @@ Contenido de `frontend/.env.local`:
 
 ```env
 NEXT_PUBLIC_API_URL=http://localhost:3001
+API_INTERNAL_URL=http://localhost:3001
 BETTER_AUTH_SECRET=cambia_este_secreto_por_uno_seguro_min_32_chars
 BETTER_AUTH_URL=http://localhost:3001
 ```
@@ -191,8 +186,8 @@ Dependencias principales:
 ```
 next react react-dom
 better-auth
-tailwindcss @tailwindcss/forms
-axios
+tailwindcss
+react-hook-form
 ```
 
 ### 4.3 Ejecutar en desarrollo

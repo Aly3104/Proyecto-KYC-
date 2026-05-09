@@ -1,17 +1,87 @@
-backend:
+services:
+  db:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: kyc-mssql
+    environment:
+      ACCEPT_EULA: "Y"
+      SA_PASSWORD: "YourStrong!Passw0rd"
+      MSSQL_PID: "Express"
+    ports:
+      - "1433:1433"
+    volumes:
+      - mssql_data:/var/opt/mssql
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "/opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'YourStrong!Passw0rd' -C -Q 'SELECT 1'",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - kyc-network
+
+  db-init:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: kyc-db-init
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./database/schema.sql:/schema.sql:ro
+    entrypoint: >
+      /bin/bash -c "
+        /opt/mssql-tools18/bin/sqlcmd -S db -U sa -P 'YourStrong!Passw0rd' -C -Q \"IF DB_ID('kyc_db') IS NULL CREATE DATABASE kyc_db;\" &&
+        /opt/mssql-tools18/bin/sqlcmd -S db -U sa -P 'YourStrong!Passw0rd' -C -d kyc_db -i /schema.sql
+      "
+    networks:
+      - kyc-network
+    restart: "no"
+
+  backend:
     build:
       context: ./backend
+      dockerfile: Dockerfile
     container_name: kyc-backend
-    restart: always # Esto ayuda a que si falla al inicio, reintente
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
     environment:
       PORT: "3001"
-      NODE_ENV: "development" # Cambiado de production a development para que coincida con nuestro Dockerfile
-      # IMPORTANTE: Asegurarse que el nombre de la base de datos (kyc_db) exista o se cree
-      DATABASE_URL: "sqlserver://db:1433;database=master;user=sa;password=YourStrongPassw0rd1;encrypt=false;trustServerCertificate=true"
-      BETTER_AUTH_SECRET: "un-string-muy-largo-de-mas-de-32-caracteres"
+      NODE_ENV: "development"
+      DATABASE_URL: "sqlserver://db:1433;database=kyc_db;user=sa;password=YourStrong!Passw0rd;encrypt=false;trustServerCertificate=true"
+      BETTER_AUTH_SECRET: "cambia_este_secreto_por_uno_seguro_min_32_chars"
       BETTER_AUTH_URL: "http://localhost:3001"
       FRONTEND_URL: "http://localhost:3000"
     ports:
       - "3001:3001"
+    networks:
+      - kyc-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: kyc-frontend
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_URL: "http://localhost:3001"
+      API_INTERNAL_URL: "http://backend:3001"
+      BETTER_AUTH_SECRET: "cambia_este_secreto_por_uno_seguro_min_32_chars"
+      BETTER_AUTH_URL: "http://backend:3001"
+    ports:
+      - "3000:3000"
+    networks:
+      - kyc-network
+
+volumes:
+  mssql_data:
+
+networks:
+  kyc-network:
+    driver: bridge

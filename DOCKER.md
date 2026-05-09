@@ -125,17 +125,14 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
     environment:
       PORT: 3001
-      NODE_ENV: production
-      DB_HOST: db
-      DB_PORT: 1433
-      DB_USER: sa
-      DB_PASSWORD: "YourStrong!Passw0rd"
-      DB_NAME: kyc_db
-      DB_ENCRYPT: "false"
+      NODE_ENV: development
+      DATABASE_URL: "sqlserver://db:1433;database=kyc_db;user=sa;password=YourStrong%21Passw0rd;encrypt=false;trustServerCertificate=true"
       BETTER_AUTH_SECRET: "cambia_este_secreto_por_uno_seguro_min_32_chars"
-      BETTER_AUTH_URL: "http://backend:3001"
+      BETTER_AUTH_URL: "http://localhost:3001"
       FRONTEND_URL: "http://localhost:3000"
     ports:
       - "3001:3001"
@@ -152,6 +149,7 @@ services:
       - backend
     environment:
       NEXT_PUBLIC_API_URL: "http://localhost:3001"
+      API_INTERNAL_URL: "http://backend:3001"
       BETTER_AUTH_SECRET: "cambia_este_secreto_por_uno_seguro_min_32_chars"
       BETTER_AUTH_URL: "http://backend:3001"
     ports:
