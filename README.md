@@ -1,0 +1,292 @@
+# KYC System — Prueba Técnica NextJS & NestJS
+
+Sistema básico de Debida Diligencia (KYC) con registro de clientes, evaluación automática de riesgo, alertas y autenticación por roles.
+
+## Stack
+
+| Componente   | Tecnología              |
+|--------------|-------------------------|
+| Frontend     | Next.js 14+ (App Router)|
+| Backend      | NestJS                  |
+| Autenticación| Better Auth             |
+| Base de datos| Microsoft SQL Server    |
+
+---
+
+## Estructura del repositorio
+
+```
+kyc-project/
+├── backend/          # API NestJS
+├── frontend/         # Aplicación Next.js
+├── database/
+│   └── schema.sql    # Esquema y datos semilla MSSQL
+├── README.md
+└── DOCKER.md         # Guía de despliegue con Docker
+```
+
+---
+
+## Requisitos previos
+
+| Herramienta   | Versión mínima | Descarga                              |
+|---------------|----------------|---------------------------------------|
+| Node.js       | 20 LTS         | https://nodejs.org                    |
+| npm           | 10+            | incluido con Node                     |
+| SQL Server    | 2019 o 2022    | https://www.microsoft.com/sql-server  |
+
+> **Alternativa a SQL Server local:** ver [DOCKER.md](./DOCKER.md) para levantar MSSQL con Docker en un solo comando.
+
+---
+
+## 1. Clonar el repositorio
+
+```bash
+git clone <URL_DEL_REPOSITORIO>
+cd kyc-project
+```
+
+---
+
+## 2. Base de datos
+
+### 2.1 Crear la base de datos
+
+En SSMS o `sqlcmd`, crear la base de datos antes de ejecutar el esquema:
+
+```sql
+CREATE DATABASE kyc_db;
+GO
+USE kyc_db;
+GO
+```
+
+### 2.2 Ejecutar el esquema
+
+```bash
+# Opción A — sqlcmd (CLI)
+sqlcmd -S localhost -U sa -P "YourStrong!Passw0rd" -d kyc_db -i database/schema.sql
+
+# Opción B — SSMS
+# Abrir database/schema.sql y ejecutar contra la base de datos kyc_db
+```
+
+El script crea el esquema `kyc`, todas las tablas y los datos semilla de catálogos (nacionalidades, actividades económicas, orígenes de fondos).
+
+### 2.3 Justificación del esquema
+
+Se normalizó el esquema con las siguientes decisiones respecto a un diseño plano:
+
+| Decisión | Razón |
+|----------|-------|
+| Separar `nationalities`, `economic_activities`, `fund_origins` en catálogos | Evitar texto libre inconsistente y poder asignar `risk_weight` configurable sin tocar código |
+| Campo `is_foreign` en `nationalities` | La regla "Extranjero + efectivo alto → ALTO" se evalúa con JOIN, no con comparación de strings |
+| Campo `is_cash` en `fund_origins` | Identifica explícitamente pagos en efectivo para disparar la alerta `EFECTIVO_ALTO` |
+| Tablas de auth en camelCase (`userId`, `expiresAt`…) | Better Auth espera exactamente esas columnas; evita cualquier mapeo adicional |
+| `alerts.client_id` con `ON DELETE CASCADE` | Al eliminar un cliente se eliminan sus alertas, manteniendo integridad referencial automáticamente |
+
+---
+
+## 3. Backend (NestJS)
+
+### 3.1 Variables de entorno
+
+Copiar el archivo de ejemplo y completar los valores:
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+Contenido de `backend/.env`:
+
+```env
+# Servidor
+PORT=3001
+NODE_ENV=development
+
+# Base de datos (MSSQL)
+DB_HOST=localhost
+DB_PORT=1433
+DB_USER=sa
+DB_PASSWORD=YourStrong!Passw0rd
+DB_NAME=kyc_db
+DB_ENCRYPT=false
+
+# Better Auth
+BETTER_AUTH_SECRET=cambia_este_secreto_por_uno_seguro_min_32_chars
+BETTER_AUTH_URL=http://localhost:3001
+
+# Frontend (CORS)
+FRONTEND_URL=http://localhost:3000
+```
+
+### 3.2 Instalar dependencias
+
+```bash
+cd backend
+npm install
+```
+
+Dependencias principales que se instalarán:
+
+```
+@nestjs/common @nestjs/core @nestjs/platform-express
+@nestjs/config
+class-validator class-transformer
+mssql
+better-auth
+uuid
+```
+
+### 3.3 Ejecutar en desarrollo
+
+```bash
+npm run start:dev
+```
+
+La API queda disponible en: `http://localhost:3001`
+
+### 3.4 Endpoints principales
+
+| Método | Ruta              | Descripción                     | Rol requerido      |
+|--------|-------------------|---------------------------------|--------------------|
+| POST   | `/auth/sign-up`   | Registro de usuario             | —                  |
+| POST   | `/auth/sign-in`   | Login                           | —                  |
+| POST   | `/auth/sign-out`  | Cerrar sesión                   | Autenticado        |
+| POST   | `/clients`        | Crear cliente KYC               | admin / analista   |
+| GET    | `/clients`        | Listar todos los clientes       | admin / analista   |
+| GET    | `/clients/:id`    | Obtener un cliente por ID       | admin / analista   |
+| GET    | `/alerts`         | Listar alertas activas          | admin / analista   |
+| PATCH  | `/alerts/:id/resolve` | Marcar alerta como resuelta | admin              |
+
+---
+
+## 4. Frontend (Next.js)
+
+### 4.1 Variables de entorno
+
+```bash
+cp frontend/.env.example frontend/.env.local
+```
+
+Contenido de `frontend/.env.local`:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:3001
+BETTER_AUTH_SECRET=cambia_este_secreto_por_uno_seguro_min_32_chars
+BETTER_AUTH_URL=http://localhost:3001
+```
+
+> `BETTER_AUTH_SECRET` debe ser el mismo valor que en el backend.
+
+### 4.2 Instalar dependencias
+
+```bash
+cd frontend
+npm install
+```
+
+Dependencias principales:
+
+```
+next react react-dom
+better-auth
+tailwindcss @tailwindcss/forms
+axios
+```
+
+### 4.3 Ejecutar en desarrollo
+
+```bash
+npm run dev
+```
+
+La aplicación queda disponible en: `http://localhost:3000`
+
+---
+
+## 5. Ejecutar ambos servicios simultáneamente
+
+Desde la raíz del proyecto (requiere tener ambas carpetas con sus `.env` configurados):
+
+```bash
+# Terminal 1 — Backend
+cd backend && npm run start:dev
+
+# Terminal 2 — Frontend
+cd frontend && npm run dev
+```
+
+O instalar `concurrently` en la raíz:
+
+```bash
+npm install -D concurrently
+# Luego en package.json raíz agregar:
+# "dev": "concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\""
+npm run dev
+```
+
+---
+
+## 6. Lógica de evaluación de riesgo
+
+El backend calcula automáticamente el `risk_level` al crear un cliente aplicando la siguiente lógica:
+
+```
+score = nationality.is_foreign * 3
+      + economic_activity.risk_weight
+      + fund_origin.risk_weight
+      + (estimated_monthly_amount > 5,000,000 ? 3 : 0)
+      + (fund_origin.is_cash && estimated_monthly_amount > 2,000,000 ? 4 : 0)
+
+risk_level = score >= 8 ? 'ALTO'
+           : score >= 4 ? 'MEDIO'
+           :               'BAJO'
+```
+
+**Alertas generadas automáticamente:**
+
+| Condición                                      | Tipo de alerta              |
+|------------------------------------------------|-----------------------------|
+| `fund_origin.is_cash` y monto > 2,000,000      | `EFECTIVO_ALTO`             |
+| `nationality.is_foreign` y `is_cash` alto      | `EXTRANJERO_EFECTIVO_ALTO`  |
+| `risk_level === 'ALTO'`                        | `RIESGO_ALTO`               |
+| Campos opcionales vacíos o sospechosos         | `DATOS_INCOMPLETOS`         |
+| `fund_origin.name` contiene "terceros"         | `USO_TERCEROS`              |
+
+---
+
+## 7. Scripts disponibles
+
+### Backend
+
+| Script              | Descripción                        |
+|---------------------|------------------------------------|
+| `npm run start:dev` | Desarrollo con hot-reload          |
+| `npm run build`     | Compilar a producción              |
+| `npm run start:prod`| Ejecutar build de producción       |
+| `npm run lint`      | Lintear el código                  |
+
+### Frontend
+
+| Script          | Descripción                   |
+|-----------------|-------------------------------|
+| `npm run dev`   | Desarrollo con hot-reload     |
+| `npm run build` | Compilar para producción      |
+| `npm start`     | Servidor de producción        |
+| `npm run lint`  | Lintear el código             |
+
+---
+
+## 8. Despliegue con Docker
+
+Ver [DOCKER.md](./DOCKER.md) para instrucciones completas de contenedorización y despliegue con `docker-compose`.
+
+---
+
+## 9. Roles y permisos
+
+| Rol      | Puede registrar clientes | Puede ver clientes | Puede resolver alertas |
+|----------|--------------------------|-------------------|------------------------|
+| admin    | ✅                        | ✅                 | ✅                      |
+| analista | ✅                        | ✅                 | ❌                      |

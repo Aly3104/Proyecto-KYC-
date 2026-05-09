@@ -1,0 +1,17 @@
+backend:
+    build:
+      context: ./backend
+    container_name: kyc-backend
+    restart: always # Esto ayuda a que si falla al inicio, reintente
+    depends_on:
+      - db
+    environment:
+      PORT: "3001"
+      NODE_ENV: "development" # Cambiado de production a development para que coincida con nuestro Dockerfile
+      # IMPORTANTE: Asegurarse que el nombre de la base de datos (kyc_db) exista o se cree
+      DATABASE_URL: "sqlserver://db:1433;database=master;user=sa;password=YourStrongPassw0rd1;encrypt=false;trustServerCertificate=true"
+      BETTER_AUTH_SECRET: "un-string-muy-largo-de-mas-de-32-caracteres"
+      BETTER_AUTH_URL: "http://localhost:3001"
+      FRONTEND_URL: "http://localhost:3000"
+    ports:
+      - "3001:3001"

@@ -1,0 +1,171 @@
+// This is your Prisma schema file.
+// Docs: https://pris.ly/d/prisma-schema
+//
+// NOTE: The tables are first created by database/schema.sql (reference schema).
+// This file mirrors that structure so Prisma can generate a typed client and
+// Better Auth can use the prismaAdapter. Run `prisma generate` after any change.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "sqlserver"
+  url      = env("DATABASE_URL")
+  schemas  = ["kyc"]
+}
+
+// ─── Better Auth tables ───────────────────────────────────────────────────────
+
+model User {
+  id            String   @id
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  /// "admin" | "analista"
+  role          String   @default("analista")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sessions       Session[]
+  accounts       Account[]
+  createdClients Client[]
+  resolvedAlerts Alert[]  @relation("AlertResolver")
+
+  @@map("user")
+  @@schema("kyc")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("session")
+  @@schema("kyc")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  accessToken           String?   @db.NVarChar(Max)
+  refreshToken          String?   @db.NVarChar(Max)
+  idToken               String?   @db.NVarChar(Max)
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("account")
+  @@schema("kyc")
+}
+
+model Verification {
+  id         String    @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime? @default(now())
+  updatedAt  DateTime? @updatedAt
+
+  @@map("verification")
+  @@schema("kyc")
+}
+
+// ─── Catalog tables ───────────────────────────────────────────────────────────
+
+model Nationality {
+  id         Int     @id @default(autoincrement())
+  name       String  @db.NVarChar(100)
+  code       String  @unique @db.NVarChar(3)
+  /// true = nationality treated as "foreign" for risk scoring
+  is_foreign Boolean @default(false)
+
+  clients Client[]
+
+  @@map("nationalities")
+  @@schema("kyc")
+}
+
+model EconomicActivity {
+  id          Int    @id @default(autoincrement())
+  name        String @db.NVarChar(150)
+  risk_weight Int    @default(0)
+
+  clients Client[]
+
+  @@map("economic_activities")
+  @@schema("kyc")
+}
+
+model FundOrigin {
+  id          Int     @id @default(autoincrement())
+  name        String  @db.NVarChar(150)
+  /// true = cash payment, triggers EFECTIVO_ALTO alert logic
+  is_cash     Boolean @default(false)
+  risk_weight Int     @default(0)
+
+  clients Client[]
+
+  @@map("fund_origins")
+  @@schema("kyc")
+}
+
+// ─── Domain tables ────────────────────────────────────────────────────────────
+
+model Client {
+  id                       String   @id
+  full_name                String   @db.NVarChar(255)
+  identification           String   @unique @db.NVarChar(50)
+  nationality_id           Int
+  economic_activity_id     Int
+  fund_origin_id           Int
+  estimated_monthly_amount Decimal  @db.Decimal(18, 2)
+  /// "BAJO" | "MEDIO" | "ALTO"
+  risk_level               String   @default("BAJO") @db.NVarChar(10)
+  created_by               String
+  created_at               DateTime @default(now())
+  updated_at               DateTime @updatedAt
+
+  nationality      Nationality      @relation(fields: [nationality_id], references: [id])
+  economicActivity EconomicActivity @relation(fields: [economic_activity_id], references: [id])
+  fundOrigin       FundOrigin       @relation(fields: [fund_origin_id], references: [id])
+  creator          User             @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  alerts           Alert[]
+
+  @@map("clients")
+  @@schema("kyc")
+}
+
+model Alert {
+  id          String    @id
+  client_id   String
+  /// EFECTIVO_ALTO | EXTRANJERO_EFECTIVO_ALTO | RIESGO_ALTO | DATOS_INCOMPLETOS | USO_TERCEROS
+  type        String    @db.NVarChar(50)
+  description String    @db.NVarChar(500)
+  is_resolved Boolean   @default(false)
+  resolved_by String?
+  resolved_at DateTime?
+  created_at  DateTime  @default(now())
+
+  client   Client @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  resolver User?  @relation("AlertResolver", fields: [resolved_by], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("alerts")
+  @@schema("kyc")
+}
