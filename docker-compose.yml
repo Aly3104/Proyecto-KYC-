@@ -52,7 +52,7 @@ services:
         condition: service_completed_successfully
     environment:
       PORT: "3001"
-      NODE_ENV: "development"
+      NODE_ENV: "production"
       DATABASE_URL: "sqlserver://db:1433;database=kyc_db;user=sa;password=YourStrong!Passw0rd;encrypt=false;trustServerCertificate=true"
       BETTER_AUTH_SECRET: "cambia_este_secreto_por_uno_seguro_min_32_chars"
       BETTER_AUTH_URL: "http://localhost:3001"

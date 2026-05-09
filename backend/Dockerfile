@@ -1,25 +1,44 @@
-# Usamos Alpine que es más ligero y compatible con Prisma en estos casos
-FROM node:20-alpine
+# Stage 1: install dependencies
+FROM node:20-alpine AS deps
 
-# Instalamos las librerías que Prisma necesita para Windows/Docker
-RUN apk add --no-cache openssl openssl-dev libc6-compat
+RUN apk add --no-cache openssl libc6-compat
 
 WORKDIR /app
 
-# Copiamos archivos de dependencias
 COPY package*.json ./
+RUN npm ci
 
-# Instalamos todo
-RUN npm install
+# Stage 2: build NestJS and Prisma client
+FROM node:20-alpine AS builder
 
-# Copiamos el resto del código
+RUN apk add --no-cache openssl libc6-compat
+
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Generamos el cliente de Prisma
-RUN npx prisma generate
+ENV DATABASE_URL="sqlserver://localhost:1433;database=kyc_db;user=sa;password=YourStrong%21Passw0rd;encrypt=false;trustServerCertificate=true"
 
-# Exponemos el puerto que pide la prueba (o el 3000)
+RUN npx prisma generate
+RUN npm run build
+
+# Stage 3: production runtime
+FROM node:20-alpine AS runner
+
+RUN apk add --no-cache openssl libc6-compat
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=builder /app/node_modules/@prisma/client ./node_modules/@prisma/client
+
 EXPOSE 3001
 
-# IMPORTANTE: Usamos 'start:dev' para que el contenedor se reinicie solo al cambiar código
-CMD ["npm", "run", "start:dev"]
+CMD ["node", "dist/main.js"]

@@ -21,6 +21,8 @@ kyc-project/
 ├── frontend/         # Aplicación Next.js
 ├── database/
 │   └── schema.sql    # Esquema y datos semilla MSSQL
+├── scripts/
+│   └── seed-users.mjs # Crea usuarios demo admin / analista
 ├── README.md
 └── DOCKER.md         # Guía de despliegue con Docker
 ```
@@ -140,7 +142,31 @@ npm run start:dev
 
 La API queda disponible en: `http://localhost:3001`
 
-### 3.4 Endpoints principales
+### 3.4 Crear usuarios demo
+
+Con la API ejecutándose, crear usuarios iniciales para poder ingresar al sistema:
+
+```bash
+# Desde la raíz del proyecto
+node scripts/seed-users.mjs
+```
+
+El script crea estos usuarios si no existen:
+
+| Rol      | Email               | Password     |
+|----------|---------------------|--------------|
+| admin    | `admin@kyc.local`   | `Admin123!`  |
+| analista | `analista@kyc.local`| `Analista123!` |
+
+> Estas credenciales son solo para demo local de la prueba técnica. Para otro entorno, cambiar los valores antes de usarlos.
+
+Si la API corre en otra URL:
+
+```bash
+KYC_API_URL=http://localhost:3001 node scripts/seed-users.mjs
+```
+
+### 3.5 Endpoints principales
 
 | Método | Ruta                  | Descripción                               | Rol requerido      |
 |--------|-----------------------|-------------------------------------------|--------------------|
@@ -270,7 +296,7 @@ El formulario de registro muestra una previsualización automática con el nivel
 | `npm run start:dev` | Desarrollo con hot-reload          |
 | `npm run build`     | Compilar a producción              |
 | `npm run start:prod`| Ejecutar build de producción       |
-| `npm run lint`      | Lintear el código                  |
+| `npm run lint`      | Validar TypeScript sin emitir archivos |
 
 ### Frontend
 
